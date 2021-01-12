@@ -19,35 +19,79 @@ module LS
 
     def initialize(argv)
       @params, @files = parse_options(argv)
+
+      @output = {
+        permissions: [],
+        links: [],
+        owners: [],
+        groups: [],
+        sizes: [],
+        modified_dates: [],
+        filenames: []
+      }
     end
 
     def run
-      list_directory unless @files.any?
+      unless @files.any?
+        Dir.children(Dir.getwd).sort.each do |child|
+          next if !@params[:show_all_files] && child[0] == "."
+
+          generate_output(child)
+        end
+      end
       
       @files.each do |path|
-        raise 'No such file or directory' if !directory?(path) && !file?(path)
+        raise 'No such file or directory' unless (directory?(path) || file?(path))
        
         if directory?(path)
-          list_directory(path)
+          Dir.children(path).sort.each do |child|
+            next if !@params[:show_all_files] && child[0] == "."
+
+            generate_output(child)
+          end
         end
 
         if file?(path)
-          render_output(path)
+          generate_output(path)
         end
       end
+
+      render_output
     end
 
-    def list_directory(dir = Dir.getwd)
-      Dir.children(dir).sort.each do |child|
-        next if !@params[:show_all_files] && child[0] == "."
+    def render_output
+      unless @params[:detailed_output]
+        @output[:filenames].each do |filename|
+          puts filename
+        end
 
-        render_output(child)
+        return
+      end
+      
+      total_files = @output[:filenames].size
+      max_links_size = @output[:links].max.to_s.size
+      max_owners_size = @output[:owners].max.size
+      max_groups_size = @output[:groups].max.size
+      max_filesize_size = @output[:sizes].max.to_s.size
+      max_modified_dates_size = @output[:modified_dates].max.size
+      max_filenames_size = @output[:filenames].max.size
+      
+      0.upto(total_files - 1) do |index|
+        puts [
+          @output[:permissions][index],
+          @output[:links][index].to_s.rjust(max_links_size),
+          @output[:owners][index].rjust(max_owners_size),
+          @output[:groups][index].rjust(max_groups_size),
+          @output[:sizes][index].to_s.rjust(max_filesize_size),
+          @output[:modified_dates][index].ljust(max_modified_dates_size),
+          @output[:filenames][index].ljust(max_filenames_size)
+        ].join(" ")
       end
     end
 
-    def render_output(filename)
+    def generate_output(filename)
       unless @params[:detailed_output]
-        puts filename
+        @output[:filenames].push filename
         return
       end
       
@@ -65,18 +109,14 @@ module LS
       size = stats.size
       links = stats.nlink
       modified_date = stats.mtime
-
-      output = [
-        file_identifier + string_permissions,
-        links,
-        owner_name,
-        group_name,
-        size,
-        modified_date.strftime("%b %d %H:%M").downcase,
-        filename
-      ].join(" ")
       
-      puts output
+      @output[:permissions].push(file_identifier + string_permissions)
+      @output[:links].push(links)
+      @output[:owners].push(owner_name)
+      @output[:groups].push(group_name)
+      @output[:sizes].push(size)
+      @output[:modified_dates].push(modified_date.strftime("%b %d %H:%M"))
+      @output[:filenames].push(filename)
     end
 
     private
