@@ -1,0 +1,111 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+require 'open3'
+require 'byebug'
+require 'pry-byebug'
+
+module LS
+  class Application
+    FILE_PERMISSIONS_MAP = {
+      '7' => 'rwx',
+      '6' => 'rw-',
+      '5' => 'r-x',
+      '4' => 'r--',
+      '3' => '-wx',
+      '2' => '-w-',
+      '1' => '--x'
+    }.freeze
+
+    def initialize(argv)
+      @params, @files = parse_options(argv)
+    end
+
+    def run
+      list_directory unless @files.any?
+      
+      @files.each do |path|
+        raise 'No such file or directory' if !directory?(path) && !file?(path)
+       
+        if directory?(path)
+          list_directory(path)
+        end
+
+        if file?(path)
+          render_output(path)
+        end
+      end
+    end
+
+    def list_directory(dir = Dir.getwd)
+      Dir.children(dir).sort.each do |child|
+        next if !@params[:show_all_files] && child[0] == "."
+
+        render_output(child)
+      end
+    end
+
+    def render_output(filename)
+      unless @params[:detailed_output]
+        puts filename
+        return
+      end
+      
+      stats = File.stat(filename)
+      octal_permissions = stats.mode.to_s(8).split("")[-3..-1]
+      
+      owner_name = `getent passwd #{stats.uid}`.strip.split(":").first
+      group_name = `getent group #{stats.gid}`.strip.split(":").first
+      
+      file_identifier = File.file?(filename) ? '-' : 'd'
+      string_permissions = octal_permissions.map do |permission|
+        FILE_PERMISSIONS_MAP.fetch(permission)
+      end.join
+
+      size = stats.size
+      links = stats.nlink
+      modified_date = stats.mtime
+
+      output = [
+        file_identifier + string_permissions,
+        links,
+        owner_name,
+        group_name,
+        size,
+        modified_date.strftime("ene %d %H:%M").downcase,
+        filename
+      ].join(" ")
+      
+      puts output
+    end
+
+    private
+
+    def parse_options(argv)
+      params = {}
+      parser = OptionParser.new
+
+      parser.on("-a") { params[:show_all_files] = true }
+      parser.on("-l") { params[:detailed_output] = true }
+
+      directories = parser.parse(argv)
+
+      [params, directories]
+    end
+
+    def directory?(path)
+      Dir.exists?(path)
+    end
+
+    def file?(path)
+      File.exists?(path) && File.ftype(path) != 'directory'
+    end
+  end
+end
+
+begin
+  LS::Application.new(ARGV).run
+rescue => exception
+  $stderr.puts "ruby-ls: #{exception.message}"
+  exit 1
+end
