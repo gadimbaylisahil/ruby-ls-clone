@@ -72,7 +72,7 @@ module LS
         owner_name,
         group_name,
         size,
-        modified_date.strftime("ene %d %H:%M").downcase,
+        modified_date.strftime("%b %d %H:%M").downcase,
         filename
       ].join(" ")
       
