@@ -69,6 +69,7 @@ module LS
       end
       
       total_files = @output[:filenames].size
+
       max_links_size = @output[:links].max.to_s.size
       max_owners_size = @output[:owners].max.size
       max_groups_size = @output[:groups].max.size
@@ -84,9 +85,11 @@ module LS
           @output[:groups][index].rjust(max_groups_size),
           @output[:sizes][index].to_s.rjust(max_filesize_size),
           @output[:modified_dates][index].ljust(max_modified_dates_size),
-          @output[:filenames][index].ljust(max_filenames_size)
+          @output[:filenames][index]
         ].join(" ")
       end
+
+      return
     end
 
     def generate_output(filename)
