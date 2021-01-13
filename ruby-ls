@@ -21,6 +21,7 @@ module LS
       @params, @files = parse_options(argv)
 
       @output = {
+        block_size: 0,
         permissions: [],
         links: [],
         owners: [],
@@ -77,6 +78,10 @@ module LS
       max_modified_dates_size = @output[:modified_dates].max.size
       max_filenames_size = @output[:filenames].max.size
       
+      if @params[:detailed_output] && contains_directory?
+        puts "total #{@output[:block_size] / 2}"
+      end
+
       0.upto(total_files - 1) do |index|
         puts [
           @output[:permissions][index],
@@ -101,8 +106,8 @@ module LS
       stats = File.stat(filename)
       octal_permissions = stats.mode.to_s(8).split("")[-3..-1]
       
-      owner_name = `getent passwd #{stats.uid}`.strip.split(":").first
-      group_name = `getent group #{stats.gid}`.strip.split(":").first
+      owner_name = Etc.getpwuid(stats.uid).name
+      group_name = Etc.getgrgid(stats.gid).name
       
       file_identifier = File.file?(filename) ? '-' : 'd'
       string_permissions = octal_permissions.map do |permission|
@@ -120,6 +125,7 @@ module LS
       @output[:sizes].push(size)
       @output[:modified_dates].push(modified_date.strftime("%b %d %H:%M"))
       @output[:filenames].push(filename)
+      @output[:block_size] += stats.blocks
     end
 
     private
@@ -142,6 +148,12 @@ module LS
 
     def file?(path)
       File.exists?(path) && File.ftype(path) != 'directory'
+    end
+
+    def contains_directory?
+      @output[:filenames].any? do |filename|
+        Dir.exists?(filename)
+      end
     end
   end
 end

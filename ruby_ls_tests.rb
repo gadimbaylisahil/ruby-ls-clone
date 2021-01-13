@@ -17,11 +17,11 @@ check("Detailed output", "-l")
 
 # check("Hidden files with detailed output", "-a -l")
 
-# check("File glob with detailed output", "-l foo/*.txt")
+check("File glob with detailed output", "-l foo/*.txt")
 
 # check("Invalid directory", "missingdir")
 
-# check("Invalid flag", "-Z")
+# check("Invalid flag", "-y")
 
 puts "You passed the tests, yay!"
 
