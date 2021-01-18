@@ -2,11 +2,12 @@
 
 require 'optparse'
 require 'open3'
-require 'byebug'
-require 'pry-byebug'
+require 'etc'
 
 module LS
   class Application
+    FileNotFound = Class.new(StandardError)
+
     FILE_PERMISSIONS_MAP = {
       '7' => 'rwx',
       '6' => 'rw-',
@@ -34,27 +35,29 @@ module LS
 
     def run
       unless @files.any?
-        Dir.children(Dir.getwd).sort.each do |child|
-          next if !@params[:show_all_files] && child[0] == "."
+        Dir.entries(Dir.getwd)
+           .sort { |a, b| a.downcase.delete('.') <=> b.downcase.delete('.') }
+           .each do |child|
+          next if !@params[:show_all_files] && child[0] == '.'
 
           generate_output(child)
         end
       end
-      
+
       @files.each do |path|
-        raise 'No such file or directory' unless (directory?(path) || file?(path))
-       
+        unless directory?(path) || file?(path)
+          raise FileNotFound, "cannot access '#{path}': No such file or directory"
+        end
+
         if directory?(path)
           Dir.children(path).sort.each do |child|
-            next if !@params[:show_all_files] && child[0] == "."
+            next if !@params[:show_all_files] && child[0] == '.'
 
             generate_output(child)
           end
         end
 
-        if file?(path)
-          generate_output(path)
-        end
+        generate_output(path) if file?(path)
       end
 
       render_output
@@ -68,7 +71,7 @@ module LS
 
         return
       end
-      
+
       total_files = @output[:filenames].size
 
       max_links_size = @output[:links].max.to_s.size
@@ -77,10 +80,8 @@ module LS
       max_filesize_size = @output[:sizes].max.to_s.size
       max_modified_dates_size = @output[:modified_dates].max.size
       max_filenames_size = @output[:filenames].max.size
-      
-      if @params[:detailed_output] && contains_directory?
-        puts "total #{@output[:block_size] / 2}"
-      end
+
+      puts "total #{@output[:block_size] / 2}" if @params[:detailed_output] && contains_directory?
 
       0.upto(total_files - 1) do |index|
         puts [
@@ -91,10 +92,10 @@ module LS
           @output[:sizes][index].to_s.rjust(max_filesize_size),
           @output[:modified_dates][index].ljust(max_modified_dates_size),
           @output[:filenames][index]
-        ].join(" ")
+        ].join(' ')
       end
 
-      return
+      nil
     end
 
     def generate_output(filename)
@@ -102,13 +103,13 @@ module LS
         @output[:filenames].push filename
         return
       end
-      
+
       stats = File.stat(filename)
-      octal_permissions = stats.mode.to_s(8).split("")[-3..-1]
-      
+      octal_permissions = stats.mode.to_s(8).split('')[-3..-1]
+
       owner_name = Etc.getpwuid(stats.uid).name
       group_name = Etc.getgrgid(stats.gid).name
-      
+
       file_identifier = File.file?(filename) ? '-' : 'd'
       string_permissions = octal_permissions.map do |permission|
         FILE_PERMISSIONS_MAP.fetch(permission)
@@ -117,13 +118,13 @@ module LS
       size = stats.size
       links = stats.nlink
       modified_date = stats.mtime
-      
+
       @output[:permissions].push(file_identifier + string_permissions)
       @output[:links].push(links)
       @output[:owners].push(owner_name)
       @output[:groups].push(group_name)
       @output[:sizes].push(size)
-      @output[:modified_dates].push(modified_date.strftime("%b %d %H:%M"))
+      @output[:modified_dates].push(modified_date.strftime('%b %d %H:%M'))
       @output[:filenames].push(filename)
       @output[:block_size] += stats.blocks
     end
@@ -134,8 +135,10 @@ module LS
       params = {}
       parser = OptionParser.new
 
-      parser.on("-a") { params[:show_all_files] = true }
-      parser.on("-l") { params[:detailed_output] = true }
+      parser.on('-a') { params[:show_all_files] = true }
+      parser.on('-l') { params[:detailed_output] = true }
+
+      parser.getopts
 
       directories = parser.parse(argv)
 
@@ -143,16 +146,16 @@ module LS
     end
 
     def directory?(path)
-      Dir.exists?(path)
+      Dir.exist?(path)
     end
 
     def file?(path)
-      File.exists?(path) && File.ftype(path) != 'directory'
+      File.exist?(path) && File.ftype(path) != 'directory'
     end
 
     def contains_directory?
       @output[:filenames].any? do |filename|
-        Dir.exists?(filename)
+        Dir.exist?(filename)
       end
     end
   end
@@ -160,7 +163,21 @@ end
 
 begin
   LS::Application.new(ARGV).run
-rescue => exception
-  $stderr.puts "ruby-ls: #{exception.message}"
+rescue Errno::ENOENT => e
+  warn "ls: #{e.message}"
+
   exit 1
+rescue LS::Application::FileNotFound => e
+  warn "ls: #{e.message}"
+
+  exit 2
+rescue OptionParser::InvalidOption => e
+  option = e.message[e.message.length - 1]
+
+  warn "ls: #{e.message.gsub(':', ' --').gsub(/-.$/, "'#{option}'")}"
+  warn "Try 'ls --help' for more information."
+
+  exit 2
+rescue StandardError => e
+  abort "ls: #{e.message}"
 end
